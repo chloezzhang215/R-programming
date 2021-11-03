@@ -1,0 +1,453 @@
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(ggcorrplot)
+```
+
+```{r}
+summarize_numeric = function(dataset){
+  
+  dataset = select_if(dataset, is.numeric)
+  summary.table = data.frame(Attribute  = names(dataset))
+  
+  summary.table = summary.table %>%
+    mutate('Missing values' = apply(dataset, 2,function(x) sum(is.na(x))),
+           'unique values' = apply(dataset, 2,function(x) length(unique(x))),
+           'Mean' = colMeans(dataset,na.rm = TRUE),
+           'Max' = apply(dataset, 2,function(x) max(x,na.rm = TRUE)),
+           'Min' = apply(dataset, 2,function(x) min(x,na.rm = TRUE)),
+           'SD' = apply(dataset, 2,function(x) sd(x,na.rm = TRUE))
+)
+  summary.table
+}
+```
+
+```{r}
+summarize_character = function(dataset){
+  
+  dataset = select_if(dataset, is.character)
+  summary.table = data.frame(Attribute  = names(dataset))
+  
+  summary.table = summary.table %>%
+    mutate('Missing values' = apply(dataset, 2,function(x) sum(is.na(x))),
+           'unique values' = apply(dataset, 2,function(x) length(unique(x)))
+)
+  summary.table
+}
+```
+
+
+# 1. Variable Identiﬁcation and Initial Transformations
+
+## 1.1 Dataset Overview
+```{r}
+ER_Admissions = as_tibble(read_csv('ERAdmissions.csv'))
+summary(ER_Admissions)
+```
+
+## 1.2 Numeric Attributes
+```{r}
+summarize_numeric(ER_Admissions)
+```
+Composition: 7 numeric variables.
+
+### 1.2.1 Data Quality Issues Observed
+
+There are 23 missing values in ICU_Days.
+Hospital_Code is a unique key. 
+The minimum value of Num_Chronic_Conds and Total_Charges is negative.
+
+### 1.2.2 Transformations Required
+
+Attribute 'Death' should be transformed into factor.
+
+```{r}
+ER_Admissions = ER_Admissions %>% mutate(Death = as.factor(case_when(Death == 0 ~ 'alive', Death == 1 ~ 'dead')))
+```
+
+### 1.2.3 Attributes for Removal
+
+Attribute 'Hospital Code' should be removed as it’s a unique key.
+
+```{r}
+ER_Admissions = ER_Admissions[ , !(names(ER_Admissions) %in% 'Hospital_Code')]
+ER_Admissions
+```
+
+## 1.3 Character Attributes
+
+```{r}
+summarize_character(ER_Admissions)
+```
+Composition: 6 character variables. 
+
+### 1.3.1 Data Quality Issues Observed
+
+There are 11 missing values in Blood_Pressure_Cat.
+
+### 1.3.2 Transformations Required
+
+All the character attributes into factors.
+
+```{r}
+ER_Admissions = ER_Admissions %>% mutate(
+  Gender = as.factor(Gender),
+  Hospital_Group = as.factor(Hospital_Group),
+  Pain_Level = as.factor(Pain_Level),
+  Blood_Pressure_Cat = as.factor(Blood_Pressure_Cat),
+  Reason_For_Visit = as.factor(Reason_For_Visit),
+  Weight_Cat = as.factor(Weight_Cat)
+)
+```
+
+### 1.3.3 Attributes for Removal
+
+There is no attribute needed to be removed.
+
+## 1.4 Dataset updates after variabile identiﬁcation phase
+```{r}
+ER_Admissions=na.omit(ER_Admissions)
+summary(ER_Admissions)
+```
+
+```{r}
+colnames(ER_Admissions %>% select_if(is.factor))
+```
+
+```{r}
+colnames(ER_Admissions %>% select_if(is.numeric))
+```
+
+
+# 2. Univariate Analysis
+
+## 2.1 Numeric Attributes
+
+Logical groupings:
+Patient Situation: Patient_Age, Num_Chronic_Conds
+Time Measurement: Length_of_Stay, ICU_Days
+Hospital charge: Total_Charges
+
+```{r}
+h1 = ggplot(ER_Admissions) + geom_histogram(aes(x=Length_of_Stay))
+h2 = ggplot(ER_Admissions) + geom_histogram(aes(x=ICU_Days))
+h3 = ggplot(ER_Admissions) + geom_histogram(aes(x=Num_Chronic_Conds))
+h4 = ggplot(ER_Admissions) + geom_histogram(aes(x=Patient_Age))
+h5 = ggplot(ER_Admissions) + geom_histogram(aes(x=Total_Charges)) + ggtitle('Hospital Charges')
+
+grid.arrange(h1, h2, top = 'Time Measurement', ncol=2)
+```
+```{r}
+grid.arrange(h3, h4, top = 'Patient Situation', ncol=2)
+```
+```{r}
+h5
+```
+
+## 2.2 Categorical Attributes
+
+Logical groupings:
+Patient Demographic: Gender, Reason_For_Visit
+Patient Situation: Death, Pain_Level, Blood_Pressure_Cat, Weight_Cat
+Hospital Measurement: Hospital_Group
+
+```{r}
+b1 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender))
+b2 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group)) + ggtitle('Hospital Group')
+b3 = ggplot(ER_Admissions) + geom_bar(aes(x=Death))
+```
+```{r}
+ER_Admissions$Pain_Level = factor(ER_Admissions$Pain_Level, levels = c('None', 'Mild', 
+                                                                       'Moderate', 'Severe', 'Unknown'))
+b4 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level))
+```
+```{r}
+ER_Admissions$Blood_Pressure_Cat = factor(ER_Admissions$Blood_Pressure_Cat, 
+                                          levels = c('Low', 'Normal','MildlyHigh','ModeratelyHigh', 'SeverelyHigh'))
+b5 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+ER_Admissions$Weight_Cat = factor(ER_Admissions$Weight_Cat, 
+                                          levels = c('Normal', 'Overweight','Obese','Extreme Obese'))
+b6 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat))
+```
+```{r}
+b7 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+grid.arrange(b1, b7, top = 'Patient Situation', ncol=2)
+```
+```{r}
+b2
+```
+```{r}
+grid.arrange(b3, b4, b5, b6, top = 'Patient Situation', ncol=2)
+```
+
+
+# 3. Bivariate Analysis
+
+## 3.1 Measure/Measure
+```{r}
+ggcorrplot(cor(ER_Admissions %>% select(`Patient_Age`, `Num_Chronic_Conds`, `Length_of_Stay`, `ICU_Days`, 
+                                        'Total_Charges'))) + ggtitle('Correlation Plot')
+```
+```{r}
+age_chron = ggplot(ER_Admissions) + geom_point(aes(x=`Patient_Age`, y = `Num_Chronic_Conds`))
+age_stay = ggplot(ER_Admissions) + geom_point(aes(x=`Patient_Age`, y = `Length_of_Stay`)) 
+age_icu = ggplot(ER_Admissions) + geom_point(aes(x=`Patient_Age`, y = `ICU_Days`)) 
+age_charge = ggplot(ER_Admissions) + geom_point(aes(x=`Patient_Age`, y = `Total_Charges`)) 
+chron_stay = ggplot(ER_Admissions) + geom_point(aes(x=`Num_Chronic_Conds`, y = `Length_of_Stay`))
+chron_icu = ggplot(ER_Admissions) + geom_point(aes(x=`Num_Chronic_Conds`, y = `ICU_Days`)) 
+chron_charge = ggplot(ER_Admissions) + geom_point(aes(x=`Num_Chronic_Conds`, y = `Total_Charges`)) 
+stay_icu = ggplot(ER_Admissions) + geom_point(aes(x=`Length_of_Stay`, y = `ICU_Days`)) 
+stay_charge = ggplot(ER_Admissions) + geom_point(aes(x=`Length_of_Stay`, y = `Total_Charges`)) 
+icu_charge = ggplot(ER_Admissions) + geom_point(aes(x=`ICU_Days`, y = `Total_Charges`)) 
+```
+```{r}
+grid.arrange(age_chron, age_stay, age_icu, age_charge, chron_stay, chron_icu, nrow = 3)
+```
+```{r}
+grid.arrange(chron_charge, stay_icu, stay_charge, icu_charge, nrow = 2)
+```
+
+## 3.2 Category/Category
+
+```{r}
+c1 = ggplot(ER_Admissions) + geom_count(aes(x= `Gender`, y = `Death`))
+c2 = ggplot(ER_Admissions) + geom_count(aes(x= `Gender`, y = `Hospital_Group`))
+c3 = ggplot(ER_Admissions) + geom_count(aes(x= `Gender`, y = `Weight_Cat`)) 
+c4 = ggplot(ER_Admissions) + geom_count(aes(x= `Gender`, y = `Blood_Pressure_Cat`))
+c5 = ggplot(ER_Admissions) + geom_count(aes(x= `Gender`, y = `Pain_Level`))
+c6 = ggplot(ER_Admissions) + geom_count(aes(x= `Gender`, y = `Reason_For_Visit`)) + theme(axis.text.x=element_text(size=4))
+c7 = ggplot(ER_Admissions) + geom_count(aes(x= `Reason_For_Visit`, y = `Hospital_Group`)) + theme(axis.text.x=element_text(angle=30,size=6)) 
+c8 = ggplot(ER_Admissions) + geom_count(aes(x= `Death`, y = `Hospital_Group`)) 
+c9 = ggplot(ER_Admissions) + geom_count(aes(x= `Weight_Cat`, y = `Blood_Pressure_Cat`)) + theme(axis.text.x=element_text(angle=30,size=6)) 
+c10 = ggplot(ER_Admissions) + geom_count(aes(x= `Death`, y = `Pain_Level`)) 
+```
+```{r}
+grid.arrange(c1, c2, c3, c4, c5, c6, top = 'Gender Related', nrow = 3)
+```
+```{r}
+grid.arrange(c8, c9, c10, top = 'Patient Situation Realted', ncol = 2)
+```
+```{r}
+c7
+```
+```{r}
+f1 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender, fill = Death), position = "fill") + labs(y = "Percent") 
+f2 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender, fill = Hospital_Group), position = "fill") + labs(y = "Percent")
+f3 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender, fill = Weight_Cat), position = "fill") + labs(y = "Percent") 
+f4 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender, fill = Blood_Pressure_Cat), position = "fill") + labs(y = "Percent")
+f5 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender, fill = Pain_Level), position = "fill") + labs(y = "Percent") 
+f6 = ggplot(ER_Admissions) + geom_bar(aes(x=Gender, fill = Reason_For_Visit), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f1, f2, f3, f4, ncol = 2)
+```
+```{r}
+grid.arrange(f5, f6, ncol = 2)
+```
+```{r}
+f7 = ggplot(ER_Admissions) + geom_bar(aes(x=Death, fill = Gender), position = "fill") + labs(y = "Percent") 
+f8 = ggplot(ER_Admissions) + geom_bar(aes(x=Death, fill = Reason_For_Visit), position = "fill") + labs(y = "Percent")
+f9 = ggplot(ER_Admissions) + geom_bar(aes(x=Death, fill = Weight_Cat), position = "fill") + labs(y = "Percent") 
+f10 = ggplot(ER_Admissions) + geom_bar(aes(x=Death, fill = Blood_Pressure_Cat), position = "fill") + labs(y = "Percent")
+f11 = ggplot(ER_Admissions) + geom_bar(aes(x=Death, fill = Pain_Level), position = "fill") + labs(y = "Percent") 
+f12 = ggplot(ER_Admissions) + geom_bar(aes(x=Death, fill = Hospital_Group), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f7, f8, f9, f10, ncol = 2)
+```
+```{r}
+grid.arrange(f11, f12, ncol = 2)
+```
+```{r}
+f13 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group, fill = Gender), position = "fill") + labs(y = "Percent") 
+f14 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group, fill = Reason_For_Visit), position = "fill") + labs(y = "Percent")
+f15 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group, fill = Weight_Cat), position = "fill") + labs(y = "Percent") 
+f16 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group, fill = Blood_Pressure_Cat), position = "fill") + labs(y = "Percent")
+f17 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group, fill = Pain_Level), position = "fill") + labs(y = "Percent") 
+f18 = ggplot(ER_Admissions) + geom_bar(aes(x=Hospital_Group, fill = Death), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f13, f14, f15, f16, ncol = 2)
+```
+```{r}
+grid.arrange(f17, f18, ncol = 2)
+```
+```{r}
+f19 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat, fill = Gender), position = "fill") + labs(y = "Percent") 
+f20 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat, fill = Reason_For_Visit), position = "fill") + labs(y = "Percent")
+f21 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat, fill = Hospital_Group), position = "fill") + labs(y = "Percent") 
+f22 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat, fill = Blood_Pressure_Cat), position = "fill") + labs(y = "Percent")
+f23 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat, fill = Pain_Level), position = "fill") + labs(y = "Percent") 
+f24 = ggplot(ER_Admissions) + geom_bar(aes(x=Weight_Cat, fill = Death), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f19, f20, f21, f22, ncol = 2)
+```
+```{r}
+grid.arrange(f23, f24, ncol = 2)
+```
+```{r}
+f25 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat, fill = Gender), position = "fill") + labs(y = "Percent") 
+f26 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat, fill = Reason_For_Visit), position = "fill") + labs(y = "Percent")
+f27 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat, fill = Hospital_Group), position = "fill") + labs(y = "Percent") 
+f28 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat, fill = Weight_Cat), position = "fill") + labs(y = "Percent")
+f29 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat, fill = Pain_Level), position = "fill") + labs(y = "Percent") 
+f30 = ggplot(ER_Admissions) + geom_bar(aes(x=Blood_Pressure_Cat, fill = Death), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f25, f26, f27, f28, ncol = 2)
+```
+```{r}
+grid.arrange(f29, f30, ncol = 2)
+```
+```{r}
+f31 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level, fill = Gender), position = "fill") + labs(y = "Percent") 
+f32 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level, fill = Reason_For_Visit), position = "fill") + labs(y = "Percent")
+f33 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level, fill = Hospital_Group), position = "fill") + labs(y = "Percent") 
+f34 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level, fill = Weight_Cat), position = "fill") + labs(y = "Percent")
+f35 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level, fill = Blood_Pressure_Cat), position = "fill") + labs(y = "Percent") 
+f36 = ggplot(ER_Admissions) + geom_bar(aes(x=Pain_Level, fill = Death), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f31, f32, f33, f34, ncol = 2)
+```
+```{r}
+grid.arrange(f35, f36, ncol = 2)
+```
+```{r}
+f37 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit, fill = Gender), position = "fill") + labs(y = "Percent") 
+f38 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit, fill = Pain_Level), position = "fill") + labs(y = "Percent")
+f39 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit, fill = Hospital_Group), position = "fill") + labs(y = "Percent") 
+f40 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit, fill = Weight_Cat), position = "fill") + labs(y = "Percent")
+f41 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit, fill = Blood_Pressure_Cat), position = "fill") + labs(y = "Percent") 
+f42 = ggplot(ER_Admissions) + geom_bar(aes(x=Reason_For_Visit, fill = Death), position = "fill") + labs(y = "Percent")
+```
+```{r}
+grid.arrange(f37, f38, f39, f40, ncol = 2)
+```
+```{r}
+grid.arrange(f41, f42, ncol = 2)
+```
+
+
+
+
+## 3.3 Category/Measure
+
+```{r}
+bx1 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Gender`, y= `Patient_Age`)) 
+bx2 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Death`, y= `Patient_Age`)) 
+bx3 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Hospital_Group`, y= `Patient_Age`)) 
+bx4 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Pain_Level`, y= `Patient_Age`)) 
+bx5 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Blood_Pressure_Cat`, y= `Patient_Age`)) + theme(axis.text.x=element_text(angle=30,size=6))
+bx6 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Weight_Cat`, y= `Patient_Age`)) 
+bx7 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Reason_For_Visit`, y= `Patient_Age`)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+grid.arrange(bx1, bx2, bx3, bx4, top = 'Patient Age by Category', ncol = 2) 
+```
+```{r}
+grid.arrange(bx5, bx6, bx7, top = 'Patient Age by Category', ncol = 2)
+```
+```{r}
+bx11 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Gender`, y= `Num_Chronic_Conds`)) 
+bx21 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Death`, y= `Num_Chronic_Conds`)) 
+bx31 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Hospital_Group`, y= `Num_Chronic_Conds`)) 
+bx41 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Pain_Level`, y= `Num_Chronic_Conds`)) 
+bx51 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Blood_Pressure_Cat`, y= `Num_Chronic_Conds`)) + theme(axis.text.x=element_text(angle=30,size=6))
+bx61 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Weight_Cat`, y= `Num_Chronic_Conds`)) 
+bx71 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Reason_For_Visit`, y= `Num_Chronic_Conds`)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+grid.arrange(bx11, bx21, bx31, bx41, top = 'Number of Chronic Conditions by Category', ncol = 2) 
+```
+```{r}
+grid.arrange(bx51, bx61, bx71, top = 'Number of Chronic Conditions by Category', ncol = 2) 
+```
+
+```{r}
+bx12 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Gender`, y= `Length_of_Stay`)) 
+bx22 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Death`, y= `Length_of_Stay`)) 
+bx32 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Hospital_Group`, y= `Length_of_Stay`)) 
+bx42 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Pain_Level`, y= `Length_of_Stay`)) 
+bx52 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Blood_Pressure_Cat`, y= `Length_of_Stay`)) + theme(axis.text.x=element_text(angle=30,size=6))
+bx62 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Weight_Cat`, y= `Length_of_Stay`)) 
+bx72 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Reason_For_Visit`, y= `Length_of_Stay`)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+grid.arrange(bx12, bx22, bx32, bx42, top = 'Length of Stay by Category', ncol = 2) 
+```
+```{r}
+grid.arrange(bx52, bx62, bx72, top = 'Length of Stay by Category', ncol = 2) 
+```
+```{r}
+bx13 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Gender`, y= `ICU_Days`)) 
+bx23 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Death`, y= `ICU_Days`)) 
+bx33 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Hospital_Group`, y= `ICU_Days`)) 
+bx43 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Pain_Level`, y= `ICU_Days`)) 
+bx53 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Blood_Pressure_Cat`, y= `ICU_Days`)) + theme(axis.text.x=element_text(angle=30,size=6))
+bx63 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Weight_Cat`, y= `ICU_Days`)) 
+bx73 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Reason_For_Visit`, y= `ICU_Days`)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+grid.arrange(bx13, bx23, bx33, bx43, top = 'ICU Days by Category', ncol = 2) 
+```
+```{r}
+grid.arrange(bx53, bx63, bx73, top = 'ICU Days by Category', ncol = 2) 
+```
+```{r}
+bx14 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Gender`, y= `Total_Charges`)) 
+bx24 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Death`, y= `Total_Charges`)) 
+bx34 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Hospital_Group`, y= `Total_Charges`)) 
+bx44 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Pain_Level`, y= `Total_Charges`)) 
+bx54 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Blood_Pressure_Cat`, y= `Total_Charges`)) + theme(axis.text.x=element_text(angle=30,size=6))
+bx64 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Weight_Cat`, y= `Total_Charges`)) 
+bx74 = ggplot(ER_Admissions) + geom_boxplot(aes(x = `Reason_For_Visit`, y= `Total_Charges`)) + theme(axis.text.x=element_text(angle=30,size=6))
+```
+```{r}
+grid.arrange(bx14, bx24, bx34, bx44, top = 'Total_Charges by Category', ncol = 2) 
+```
+```{r}
+grid.arrange(bx54, bx64, bx74, top = 'Total_Charges by Category', ncol = 2) 
+```
+```{r}
+ggplot(ER_Admissions) + geom_histogram(aes(x=Patient_Age)) + facet_wrap(~ Reason_For_Visit, nrow=2)
+```
+```{r}
+ggplot(ER_Admissions) + geom_histogram(aes(x=Patient_Age)) + facet_wrap(~ Pain_Level, nrow=2)
+```
+```{r}
+ggplot(ER_Admissions) + geom_histogram(aes(x=Patient_Age)) + facet_wrap(~ Blood_Pressure_Cat, nrow=2)
+```
+```{r}
+ggplot(ER_Admissions) + geom_histogram(aes(x=Patient_Age)) + facet_wrap(~ Weight_Cat, nrow=2)
+```
+```{r}
+ggplot(ER_Admissions) + geom_histogram(aes(x=Num_Chronic_Conds)) + facet_wrap(~ Death)
+```
+```{r}
+ggplot(ER_Admissions) + geom_histogram(aes(x=Num_Chronic_Conds)) + facet_wrap(~ Pain_Level, nrow=2)
+```
+
+
+# 4. Final Analytic-Ready Table Description
+
+Numeric(5):
+Patient Demographic: Patient_Age
+Patient Situation: Num_Chronic_Conds
+Hospital Measurement: ICU_Days, Length_of_Stay
+Hospital Charge: Total_Charge
+
+Factors(7):
+Patient Demographic: Gender, Reason_For_Visit
+Patient Situation: Death, Pain_Level, Blood_Pressure_Cat, Weight_Cat
+Hospital Measurement: Hospital_Group
+
+
+
